@@ -1,0 +1,49 @@
+services:
+
+  samba-dc:
+    image: samba:debian-rmm
+    build:
+      context: ../samba-dc
+      dockerfile: dev/dockerfiles/debian
+    container_name: samba-dc
+    hostname: DC1
+    restart: unless-stopped
+    privileged: true
+    environment:
+      REALM: RMM.LAN
+      DOMAIN: RMM
+      ADMIN_PASS: "Admin1234!"
+      DNS_FORWARDER: 8.8.8.8
+      BIND_NETWORK_INTERFACES: "false"
+    ports:
+      - "53:53"
+      - "53:53/udp"
+      - "88:88"
+      - "88:88/udp"
+      - "135:135"
+      - "139:139"
+      - "389:389"
+      - "389:389/udp"
+      - "445:445"
+      - "464:464"
+      - "464:464/udp"
+      - "636:636"
+      - "3268:3268"
+      - "3269:3269"
+      - "49152-49200:49152-49200"
+    volumes:
+      - samba-dc-etc:/usr/local/samba/etc
+      - samba-dc-private:/usr/local/samba/private
+      - samba-dc-var:/usr/local/samba/var
+    networks:
+      - saltnet
+
+networks:
+  saltnet:
+    external: true
+    name: saltrmm_saltnet
+
+volumes:
+  samba-dc-etc:
+  samba-dc-private:
+  samba-dc-var:

@@ -1,0 +1,122 @@
+services:
+
+  db:
+    image: mariadb:10.11
+    container_name: salt-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: salt
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: alcali
+      MYSQL_PASSWORD: alcali
+    volumes:
+      - salt-db-data:/var/lib/mysql
+      - ./docker/sql/salt-tables.sql:/docker-entrypoint-initdb.d/salt-tables.sql:ro
+    networks:
+      - saltnet
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "alcali", "-palcali"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  alcali-web:
+    build:
+      context: ./alcali
+      dockerfile: Dockerfile
+    container_name: alcali-web
+    hostname: alcali-web
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py shell -c \"from django.contrib.auth.models import User; User.objects.filter(username='admin').count() or User.objects.create_superuser('admin', 'admin@example.com', 'password', first_name='admin', last_name='user')\" &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+    environment:
+      MASTER_MINION_ID: salt-master
+      DB_BACKEND: mysql
+      DB_NAME: salt
+      DB_USER: alcali
+      DB_PASS: alcali
+      DB_HOST: db
+      DB_PORT: "3306"
+      SECRET_KEY: "change-me-in-production-please"
+      ALLOWED_HOSTS: "*"
+      SALT_URL: https://salt-master:8000
+      SALT_AUTH: rest
+      SALT_PEPPER_VERIFY_SSL: "false"
+    ports:
+      - "8081:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - saltnet
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    image: nginx:alpine
+    container_name: alcali-nginx
+    ports:
+      - "8444:8444"
+    volumes:
+      - ./docker/nginx/alcali.conf:/etc/nginx/conf.d/alcali.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - saltnet
+    depends_on:
+      alcali-web:
+        condition: service_healthy
+    restart: unless-stopped
+
+  salt-master:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        SALT_ROLE: master
+    container_name: salt-master
+    hostname: salt-master
+    environment:
+      SALT_ROLE: master
+    ports:
+      - "4505:4505"
+      - "4506:4506"
+      - "8443:8000"
+    volumes:
+      - ./docker/conf/master:/etc/salt/master:ro
+      - ./docker/srv/salt:/srv/salt
+      - ./docker/srv/pillar:/srv/pillar
+      - ./alcali/docker/saltconfig/salt/_returners:/srv/salt/_returners:ro
+      - ./alcali/docker/saltconfig/salt/auth:/srv/salt/auth:ro
+      - ./ssl:/etc/salt/ssl:ro
+      - salt-master-pki:/etc/salt/pki
+      - salt-master-cache:/var/cache/salt
+      - salt-master-logs:/var/log/salt
+    networks:
+      - saltnet
+    depends_on:
+      db:
+        condition: service_healthy
+      alcali-web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "salt-run", "manage.status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  saltnet:
+    driver: bridge
+
+volumes:
+  salt-db-data:
+  salt-master-pki:
+  salt-master-cache:
+  salt-master-logs:

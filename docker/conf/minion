@@ -1,0 +1,9 @@
+master: salt-master
+
+log_level: info
+log_level_logfile: info
+log_file: /var/log/salt/minion
+
+grains:
+  roles:
+    - demo

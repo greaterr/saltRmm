@@ -155,3 +155,11 @@ nox.*.tar.xz
 /.aiderignore
 /aider.conf.yml
 /.gemini
+
+# SSL certificates and keys (security risk)
+ssl/
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
