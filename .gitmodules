@@ -1,6 +1,3 @@
 [submodule "alcali"]
 	path = alcali
 	url = git@github.com:latenighttales/alcali.git
-[submodule "samba-dc"]
-	path = samba-dc
-	url = https://github.com/diegogslomp/samba-ad-dc.git

@@ -5,11 +5,11 @@
 ```
 MacBook Pro (macOS, en0)
   ├── Docker Desktop
-  │     ├── samba-dc      — Samba AD DC (домен rmm.lan)
   │     ├── salt-master   — Salt Master + Salt API
   │     ├── alcali-web    — Web UI для Salt
   │     ├── alcali-nginx  — Reverse proxy
   │     └── salt-db       — MariaDB (returner)
+  ├── Samba DC (отдельный репозиторий: LaboratoAD)
   └── launchd: update-dns.sh  — автообновление DNS при смене IP
 
 Windows HUS (DESKTOP-E1R8HUS)
@@ -30,7 +30,7 @@ Windows NOTEBOOK_VN
 | Узел | DNS имя | Примечание |
 |------|---------|------------|
 | MacBook Pro (en0) | `macbook-pro-timur.rmm.lan` | IP динамический, меняется при смене Wi-Fi |
-| Samba DC (Docker) | `dc1.rmm.lan` | Проброс портов с Mac, IP совпадает с Mac |
+| Samba DC | `dc1.rmm.lan` | Развертывается отдельно, см. [LaboratoAD](https://github.com/greaterr/laboratoAD) |
 | Windows HUS | `DESKTOP-E1R8HUS.rmm.lan` | IP динамический |
 | Windows NOTEBOOK_VN | `NOTEBOOK_VN.rmm.lan` | IP динамический |
 
@@ -127,78 +127,18 @@ DC=rmm,DC=lan
 
 ---
 
-## Samba DC — Конфигурация
+## Samba DC
 
-### smb.conf (`/usr/local/samba/etc/smb.conf`)
-
-```ini
-[global]
-    ldap server require strong auth = No
-    dns forwarder = 8.8.8.8
-    netbios name = DC1
-    realm = RMM.LAN
-    server role = active directory domain controller
-    workgroup = RMM
-    idmap_ldb:use rfc2307 = yes
-    host msdfs = yes
-    rpc server dynamic port range = 49152-49200
-
-allow dns updates = nonsecure
-server min protocol = SMB2_10
-client max protocol = SMB3
-server signing = mandatory
-client signing = auto
-
-[sysvol]
-    path = /usr/local/samba/var/locks/sysvol
-    read only = No
-
-[netlogon]
-    path = /usr/local/samba/var/locks/sysvol/rmm.lan/scripts
-    read only = No
-```
-
-> **Критично:** `[sysvol] path` должен указывать на **корень** `/sysvol`, а не на `/sysvol/rmm.lan`.
-> Windows обращается как `\\dc1\sysvol\rmm.lan\Policies\...` — путь должен разворачиваться в `sysvol/rmm.lan/Policies/`.
-
-### SYSVOL структура на диске
-
-```
-/usr/local/samba/var/locks/sysvol/
-└── rmm.lan/
-    ├── Policies/
-    │   ├── {31B2F340-...}   Default Domain Policy
-    │   ├── {6AC1786C-...}   Default Domain Controllers Policy
-    │   ├── {1FD8DC22-...}   RMM Base Policy
-    │   ├── {47264CC9-...}   RMM Security Policy
-    │   ├── {7156229C-...}   RMM Desktop Policy
-    │   └── PolicyDefinitions/
-    └── scripts/
-```
-
-### Проброс портов (docker/samba-dc.yml)
-
-| Порт(ы) | Протокол | Назначение |
-|---------|----------|------------|
-| 53 | TCP/UDP | DNS |
-| 88 | TCP/UDP | Kerberos |
-| 135 | TCP | RPC Endpoint Mapper |
-| 139 | TCP | NetBIOS |
-| 389 | TCP/UDP | LDAP |
-| 445 | TCP | SMB (SYSVOL, NETLOGON) |
-| 464 | TCP/UDP | Kerberos password |
-| 636 | TCP | LDAPS |
-| 3268-3269 | TCP | Global Catalog |
-| **49152-49200** | **TCP** | **RPC динамические порты (обязательно для GPO Computer Policy!)** |
-
-> **Критично:** Без проброса RPC динамических портов `gpupdate /force` завершается с ошибкой
-> `0x6BA RPC_S_SERVER_UNAVAILABLE` при обработке Computer Policy.
+Samba Active Directory Domain Controller развертывается в отдельном репозитории [LaboratoAD](https://github.com/greaterr/laboratoAD).
 
 ### Запуск Samba DC
 
 ```bash
-docker compose -f docker/samba-dc.yml up -d
+cd /path/to/laboratoAD
+docker compose up -d
 ```
+
+Подробная документация по настройке и управлению Samba DC доступна в репозитории LaboratoAD.
 
 ---
 
@@ -391,15 +331,20 @@ cat /tmp/saltrmm-updatedns.log
 ```
 saltRmm/
 ├── docker-compose.yml          — Salt Master + Alcali + MariaDB
-├── docker/samba-dc.yml         — Samba AD DC + проброс портов
 ├── update-dns.sh               — автообновление DNS
 ├── com.saltrmm.updatedns.plist — launchd агент
 ├── ssl/                        — TLS сертификаты
+├── alcali/                     — Alcali Web UI (submodule)
+├── salt/                       — Salt Stack (submodule)
 └── docker/
     ├── conf/master             — конфиг Salt Master
     └── srv/salt/
         └── scripts/            — PowerShell скрипты для Windows
 ```
+
+### Связанные репозитории
+
+- [LaboratoAD](https://github.com/greaterr/laboratoAD) — Samba AD DC инфраструктура
 
 ### PowerShell скрипты (`docker/srv/salt/scripts/`)
 
